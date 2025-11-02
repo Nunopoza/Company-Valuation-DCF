@@ -1,5 +1,6 @@
 import streamlit as st
 import numpy as np
+import matplotlib.pyplot as plt
 from dcf_model import DCFModel
 
 # --- Configuration and Utility Functions ---
@@ -32,7 +33,7 @@ st.sidebar.header("1. Company Base Parameters")
 fcf_year_0 = st.sidebar.number_input(
     "FCF Year 0 (USD):", 
     min_value=0.0, 
-    value=150000000.0, # Valor ajustado
+    value=150000000.0, # Adjusted value
     step=1000000.0, 
     format="%.0f",
     help="Latest reported Free Cash Flow. E.g., type 150000000 for $150 million."
@@ -50,7 +51,7 @@ net_debt = st.sidebar.number_input(
 shares_outstanding = st.sidebar.number_input(
     "Shares Outstanding:", 
     min_value=100000.0, 
-    value=25000000.0, # Valor ajustado
+    value=25000000.0, # Adjusted value
     step=100000.0,
     format="%.0f",
     help="Total number of outstanding common shares."
@@ -70,7 +71,7 @@ st.sidebar.header("2. Growth Assumptions (Two-Stage)")
 initial_growth_rate = st.sidebar.slider(
     "Growth Rate (Stage 1: Years 1-2):", 
     min_value=0.0, max_value=0.25, 
-    value=0.20, # Valor ajustado
+    value=0.20, # Adjusted value
     step=0.01, 
     format="%.2f"
 )
@@ -98,7 +99,7 @@ st.sidebar.header("3. Discount Rate & Monte Carlo")
 wacc_mean = st.sidebar.slider(
     "WACC (Mean Discount Rate):", 
     min_value=0.03, max_value=0.20, 
-    value=0.100, # Valor ajustado
+    value=0.100, # Adjusted value
     step=0.005, 
     format="%.3f",
     help="Weighted Average Cost of Capital, used as the discount rate."
@@ -183,7 +184,6 @@ with col_det:
     
     st.metric(
         label="Implied Value Per Share (Deterministic)",
-        # Output uses comma separator for thousands (e.g., 1,000,000)
         value=f"${results_display['Deterministic_Value']:,.2f}",
         help=f"Calculated using fixed inputs: WACC ({wacc_mean:.1%}) and g ({perpetuity_growth_g:.1%}) as fixed inputs."
     )
@@ -196,7 +196,6 @@ with col_mc:
     
     st.metric(
         label="Average Value Per Share (from Simulation)",
-        # Output uses comma separator for thousands
         value=f"${results_display['MC_Mean']:,.2f}",
         delta=f"Std. Dev. (Risk): ${results_display['MC_StDev']:,.2f}",
         delta_color="off",
@@ -207,7 +206,6 @@ with col_mc:
     ci_high = results_display['MC_CI_High']
     
     st.success(
-        # Corrected format to ensure spacing: $XX.XX to $YY.YY
         f"95% Confidence Range: ${ci_low:,.2f} to ${ci_high:,.2f}"
     )
     
@@ -215,8 +213,43 @@ with col_mc:
 st.markdown("---")
 st.header("Value Distribution (Risk Profile)")
 
-# Save the figure and display it
-fig = dcf.plot_monte_carlo_results()
+# --- GENERACIÓN DEL GRÁFICO ---
+
+# Recrear la figura
+fig, ax = plt.subplots(figsize=(10, 6))
+
+# Usamos la data guardada en el objeto dcf para plotear
+if len(dcf.simulated_per_share_values) > 0:
+    ax.hist(dcf.simulated_per_share_values, bins=50, density=True, alpha=0.6, color='skyblue', edgecolor='black')
+    
+    mean_val = results_mc['Mean']
+    median_val = results_mc['Median']
+    
+    # Lines are in English now
+    ax.axvline(mean_val, color='red', linestyle='dashed', linewidth=2, label=f'Mean: ${mean_val:,.2f}')
+    ax.axvline(median_val, color='green', linestyle='dashed', linewidth=2, label=f'Median: ${median_val:,.2f}')
+    
+    # --- AÑADIR CONTEXTO DE INPUTS DENTRO DEL ÁREA DE LOS EJES (ESTABLE) ---
+    input_text = (
+        f"Assumptions:\n"
+        f"FCF (Y0): ${fcf_year_0/1e6:.0f}M | Shares: {shares_outstanding/1e6:.0f}M\n"
+        f"WACC (Mean): {wacc_mean:.2%} | Growth (Stage 1): {initial_growth_rate:.1%}"
+    )
+    
+    # Colocar el texto en la esquina superior derecha de la zona de trazado (ax.text)
+    # xy=(0.95, 0.95) son coordenadas relativas a los ejes (no a la figura total)
+    ax.text(0.95, 0.95, input_text, transform=ax.transAxes, 
+             fontsize=10, verticalalignment='top', horizontalalignment='right', 
+             bbox=dict(boxstyle="round,pad=0.5", fc="white", alpha=0.7))
+
+    # Títulos y Ejes en inglés
+    ax.set_title('Distribution of Implied Value Per Share (Monte Carlo Simulation)', fontsize=14)
+    ax.set_xlabel('Value Per Share ($)', fontsize=12)
+    ax.set_ylabel('Normalized Frequency', fontsize=12)
+    ax.legend()
+    ax.grid(axis='y', alpha=0.5)
+
+# Guardar la figura y mostrarla
 fig.savefig("monte_carlo_distribution.png", bbox_inches='tight')
 st.pyplot(fig)
 
